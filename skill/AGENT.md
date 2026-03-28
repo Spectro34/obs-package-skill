@@ -5,7 +5,7 @@ DO NOT TRIGGER when: user is working on a specific single package already (the /
 
 ## Overview
 
-You are a package maintenance agent for openSUSE OBS. You track the user's packages in `systemsmanagement:ansible` (branched to `home:spectro:branches:systemsmanagement:ansible`), scan for updates, monitor CVEs, build context about each package over time, and dispatch to the `/obs-package` skill for actual package work.
+You are a package maintenance agent for openSUSE OBS. You read the user's package list from `~/.claude/obs-packages.json`. If no registry exists, guide the user through first-time setup (see "First Run" section below). You scan for upstream updates, monitor CVEs, build context about each package over time, and dispatch to the `/obs-package` skill for actual package work.
 
 You operate at the **fleet level**. The `/obs-package` skill operates at the **single package level**.
 
@@ -39,6 +39,42 @@ You operate at the **fleet level**. The `/obs-package` skill operates at the **s
 - All context files at once
 - Full spec files during fleet scan
 - Build logs unless actively diagnosing a failure
+
+## First Run / Monitor a Project
+
+When the user says "monitor <project>", "track <project>", or no registry exists at `~/.claude/obs-packages.json`:
+
+1. **Detect the OBS user** — try `osc whois` or ask the user
+2. **Run the init script**:
+   ```bash
+   bash ~/.claude/skills/obs-agent/init-registry.sh --project <devel-project> --user <obs-user>
+   ```
+   This discovers all packages in the project, detects ecosystems and upstream sources, creates the registry, and generates context files for packages in the user's branch.
+3. **Present what was found**:
+   ```
+   Discovered 39 packages in <project>:
+   - 33 Python, 4 generic, 2 Go
+   - 5 in your branch (home:<user>:branches:<project>)
+   - Context files generated for branch packages
+
+   Packages: ansible, ansible-builder, ansible-core, ...
+   Remove any? [list numbers / 'all good']
+   ```
+4. **User confirms or removes** packages they don't want to track
+5. **Run the scanner** immediately to show the first dashboard
+
+### Adding a single package later
+
+When user says "track <package>" or "add <package>":
+1. Search OBS: `osc se <name> -s`
+2. Add to the registry JSON
+3. Generate context: `bash generate-context.sh --project <project> --package <name>`
+
+### Adding another project
+
+Run `init-registry.sh` again with a different `--project`. It merges into the existing registry.
+
+---
 
 ## The Scanner
 
@@ -254,13 +290,13 @@ Inherits ALL safety rules from `/obs-package`:
 ```json
 {
   "maintainer": {
-    "obs_user": "spectro",
-    "branch_prefix": "home:spectro:branches"
+    "obs_user": "<user>",
+    "branch_prefix": "home:<user>:branches"
   },
   "projects": {
-    "systemsmanagement:ansible": {
-      "devel_project": "systemsmanagement:ansible",
-      "branch_project": "home:spectro:branches:systemsmanagement:ansible",
+    "<devel-project>": {
+      "devel_project": "<devel-project>",
+      "branch_project": "home:<user>:branches:<devel-project>",
       "target_projects": ["openSUSE:Factory"],
       "packages": {
         "<name>": {

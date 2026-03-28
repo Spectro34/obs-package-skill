@@ -147,22 +147,47 @@ go build -o osc-mcp .
 
 ### 1. Install the skills
 
-Copy both skills and the scanner to your Claude Code skills directory:
+Copy both skills, scanner, and setup scripts to your Claude Code skills directory:
 
 ```bash
 # Single-package workflow
 mkdir -p ~/.claude/skills/obs-package
 cp skill/SKILL.md ~/.claude/skills/obs-package/SKILL.md
 
-# Fleet agent + scanner
+# Fleet agent + scanner + setup scripts
 mkdir -p ~/.claude/skills/obs-agent
 cp skill/AGENT.md ~/.claude/skills/obs-agent/SKILL.md
 cp scripts/scan-packages.sh ~/.claude/skills/obs-agent/scan-packages.sh
-chmod +x ~/.claude/skills/obs-agent/scan-packages.sh
-
-# Initialize package registry (edit with your packages)
-cp registry-example.json ~/.claude/obs-packages.json
+cp scripts/init-registry.sh ~/.claude/skills/obs-agent/init-registry.sh
+cp scripts/generate-context.sh ~/.claude/skills/obs-agent/generate-context.sh
+chmod +x ~/.claude/skills/obs-agent/*.sh
 ```
+
+### 2. Set up your packages (first run)
+
+Tell the agent which OBS project to monitor. It discovers all packages automatically:
+
+```bash
+# Option A: Automated — just talk to Claude Code
+claude "monitor systemsmanagement:ansible"
+# The agent discovers packages, creates registry + context files
+
+# Option B: Run the setup script directly
+bash ~/.claude/skills/obs-agent/init-registry.sh \
+  --project systemsmanagement:ansible \
+  --user your-obs-username
+
+# Option C: Manual — copy and edit the template
+cp registry-example.json ~/.claude/obs-packages.json
+# Edit to add your projects and packages
+```
+
+The init script:
+- Lists all packages in the devel project
+- Detects ecosystem (Python/Go/Rust) from each spec file
+- Detects upstream source (PyPI/GitHub/crates.io) from Source URLs
+- Creates `~/.claude/obs-packages.json` (merges if it already exists)
+- Generates per-package context files in `~/.claude/obs-packages/context/`
 
 ### 2. Install the safety hook
 
@@ -274,17 +299,20 @@ It saves this to `known_issues` in the registry and won't flag it again.
 
 ```
 .
-├── README.md                  # This file
+├── README.md                    # This file
 ├── skill/
-│   ├── SKILL.md               # Single-package workflow skill
-│   └── AGENT.md               # Fleet management / scanner skill
+│   ├── SKILL.md                 # Single-package workflow skill
+│   └── AGENT.md                 # Fleet management / scanner skill
 ├── scripts/
-│   └── scan-packages.sh       # Package scanner (checks OBS + upstream)
+│   ├── scan-packages.sh         # Package scanner (OBS + upstream + CVEs)
+│   ├── init-registry.sh         # First-run: discover packages, create registry
+│   └── generate-context.sh      # Generate context file for a single package
 ├── hooks/
-│   └── block-osc-sr.sh        # PreToolUse hook to block submit requests
-├── registry-example.json      # Example package registry
-├── mcp-config-example.json    # Example .mcp.json for osc-mcp setup
-└── settings-example.json      # Example Claude Code settings with hook
+│   └── block-osc-sr.sh          # PreToolUse hook to block submit requests
+├── registry-example.json        # Example package registry template
+├── context-example.md           # Example per-package context file
+├── mcp-config-example.json      # Example .mcp.json for osc-mcp setup
+└── settings-example.json        # Example Claude Code settings with hook
 ```
 
 ## License
