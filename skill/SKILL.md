@@ -62,9 +62,26 @@ Use `search_bundle` to find all projects containing this package. Classify each:
 
 Record: the **devel project** (where the package is maintained), the **branch project** (where we'll work), and the **Factory/target** (where it will eventually land).
 
+### 0.1b — Branch if not already branched
+
+If the package is in the devel project but NOT in the user's branch project, **branch it first**:
+
+```bash
+# Via osc-mcp:
+branch_bundle(project_name="<devel>", bundle_name="<package>", target_project="home:<user>:branches:<devel>")
+
+# Via CLI:
+osc branch <devel-project> <package> home:<user>:branches:<devel-project>
+osc co home:<user>:branches:<devel-project> <package>
+```
+
+This creates a linked copy in the branch project. All work happens there. The link ensures the branch tracks the devel project — when you eventually submit, OBS knows what changed.
+
+Do NOT ask the user "should I branch this?" — if a package needs work and isn't branched yet, branch it. That's the standard OBS workflow.
+
 ### 0.2 — Understand the build targets
 
-Use `get_project_meta` on the branch project (or devel project if no branch yet):
+Use `get_project_meta` on the branch project:
 
 - What **repositories** are configured? (e.g., `openSUSE_Tumbleweed`, `openSUSE_Leap_15.6`, `SLE_15_SP6`)
 - What **architectures** per repo? (e.g., `x86_64`, `aarch64`, `ppc64le`)

@@ -40,42 +40,6 @@ You operate at the **fleet level**. The `/obs-package` skill operates at the **s
 - Full spec files during fleet scan
 - Build logs unless actively diagnosing a failure
 
-## First Run / Monitor a Project
-
-When the user says "monitor <project>", "track <project>", or no registry exists at `~/.claude/obs-packages.json`:
-
-1. **Detect the OBS user** — try `osc whois` or ask the user
-2. **Run the init script**:
-   ```bash
-   bash ~/.claude/skills/obs-agent/init-registry.sh --project <devel-project> --user <obs-user>
-   ```
-   This discovers all packages in the project, detects ecosystems and upstream sources, creates the registry, and generates context files for packages in the user's branch.
-3. **Present what was found**:
-   ```
-   Discovered 39 packages in <project>:
-   - 33 Python, 4 generic, 2 Go
-   - 5 in your branch (home:<user>:branches:<project>)
-   - Context files generated for branch packages
-
-   Packages: ansible, ansible-builder, ansible-core, ...
-   Remove any? [list numbers / 'all good']
-   ```
-4. **User confirms or removes** packages they don't want to track
-5. **Run the scanner** immediately to show the first dashboard
-
-### Adding a single package later
-
-When user says "track <package>" or "add <package>":
-1. Search OBS: `osc se <name> -s`
-2. Add to the registry JSON
-3. Generate context: `bash generate-context.sh --project <project> --package <name>`
-
-### Adding another project
-
-Run `init-registry.sh` again with a different `--project`. It merges into the existing registry.
-
----
-
 ## The Scanner
 
 Run the scanner to check all tracked packages:
@@ -89,33 +53,50 @@ This runs externally (not in context), queries OBS + PyPI/GitHub in parallel, an
 - Broken links in branch
 - Up-to-date packages
 
+### What gets scanned
+
+The scanner checks ALL packages in the **devel project** — not just ones already in the branch. The devel project is the source of truth. The branch is just a workspace.
+
 ### Dashboard presentation
 
 ```
 ## Package Dashboard — YYYY-MM-DD
+## Devel: <devel-project> (N packages total)
 
 ### Outdated (N)
-| Package | OBS | Upstream | Branch? |
-|---------|-----|----------|---------|
+| Package | OBS | Upstream | Branched? | Action |
+|---------|-----|----------|-----------|--------|
+| pkg-a   | 1.0 | 2.0      | no        | Branch + bump |
+| pkg-b   | 3.1 | 3.2      | yes       | Bump |
 
 ### Build Failures (N)
-| Package | TW | 16.0 | 15.7 | 15.6 | Known? |
-|---------|-----|------|------|------|--------|
+| Package | TW | 16.0 | 15.7 | 15.6 | Branched? | Known? |
+|---------|-----|------|------|------|-----------|--------|
 
 ### Broken Links (N)
 | Package | Issue |
 |---------|-------|
 
 ### CVE Alerts (N)
-| Package | CVE | Severity | Fixed in |
-|---------|-----|----------|----------|
+| Package | CVE | Severity | Fixed in | Branched? |
+|---------|-----|----------|----------|-----------|
 
 ### Up to Date (N)
 [list as comma-separated names]
 
-Total: X packages, Y need attention.
-Work on something? [package name / skip]
+Total: X packages in devel, Y in branch, Z need attention.
+Work on something? [package name / 'all outdated' / skip]
 ```
+
+### Working on a package that's not branched yet
+
+When the user picks a package that's not in the branch:
+1. **Branch it automatically**: `osc branch <devel> <package> <branch-project>`
+2. Check it out locally
+3. Generate a context file for it
+4. Hand off to `/obs-package` skill
+
+Do NOT ask "should I branch this?" — if work is needed, branching is the first step. That's how OBS works.
 
 ## CVE Monitoring
 
@@ -282,7 +263,7 @@ When user says a failure is expected:
 Inherits ALL safety rules from `/obs-package`:
 1. NEVER create submit requests
 2. Only commit to branch projects
-3. Always show diff before committing
+3. Branch commits are autonomous — show diff for transparency, don't wait for confirmation
 4. PreToolUse hook blocks `osc sr` commands
 
 ## Registry Schema
