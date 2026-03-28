@@ -14,7 +14,7 @@ Use the `osc-mcp` MCP server tools when available, fall back to `osc` CLI via Ba
 1. **NEVER open a submit request (SR).** The osc-mcp server does not have an SR creation tool, and you must not attempt to create one via CLI either. When the package is ready for submission, tell the user and let them do it manually.
 2. **Only commit to branch projects.** Verify the working project is a branch (typically `home:<user>:branches:*`) before any commit. If the project does not look like a personal branch, STOP and confirm with the user.
 3. **Never commit to devel or release projects** like `devel:languages:python`, `SUSE:SLE-*:Update`, `SUSE:SLE-*:GA`, or `openSUSE:Factory`. These are targets, not workspaces.
-4. **Always show the diff before committing.** Never auto-commit without the user reviewing changes.
+4. **Commits to branches are autonomous.** Show the diff for transparency but do NOT wait for user confirmation — this is the user's own branch. Commit, then verify via OBS build results. The only gate is the SR (which the user does manually).
 5. **Validate before building.** Check that spec file parses and changelog is properly formatted before triggering a build.
 
 ## Available osc-mcp Tools
@@ -274,14 +274,15 @@ This is the core of what a package maintainer does. The only way to truly verify
 
 ```
 ┌─────────────────────────────────────────────┐
-│            PRE-COMMIT REVIEW                 │
-│  Show diff, confirm branch, get user OK     │
+│          VERIFY BRANCH + SHOW DIFF           │
+│  Confirm project is home:*:branches:*        │
+│  Show diff for transparency (don't wait)     │
 └──────────────────┬──────────────────────────┘
                    │
             ┌──────▼──────────────────────────┐
             │  COMMIT TO OBS (branch only)     │
             │  osc ci -m "message"             │
-            │  or commit via osc-mcp           │
+            │  Autonomous — this is our branch │
             └──────────────────┬──────────────┘
                                │
             ┌──────────────────▼──────────────┐
@@ -313,7 +314,7 @@ This is the core of what a package maintainer does. The only way to truly verify
                      │             │
                      │      ┌──────▼──────────────┐
                      │      │  RECOMMIT TO OBS     │
-                     │      │  (show diff, confirm)│
+                     │      │  (show diff, commit) │
                      │      └──────┬──────────────┘
                      │             │
                      │             ▼
@@ -329,8 +330,8 @@ This is the core of what a package maintainer does. The only way to truly verify
 
 ### Step-by-step:
 
-1. **Show the diff** of all changed files and get user confirmation
-2. **Verify project** is a personal branch (`home:*:branches:*`)
+1. **Verify project** is a personal branch (`home:*:branches:*`) — if not, STOP
+2. **Show the diff** of all changed files for transparency — do NOT wait for confirmation, this is the user's branch
 3. **Commit** to OBS:
    - Via osc-mcp: `commit(message="...", directory="...")`
    - Via CLI: `osc ci -m "..."`
@@ -349,8 +350,8 @@ This is the core of what a package maintainer does. The only way to truly verify
    - Read the OBS build log for each failed repo/arch using `get_build_log` (osc-mcp) or `osc buildlog <repo> <arch>` (CLI)
    - Diagnose using the table below
    - Apply the fix locally
-   - Show the new diff, get user confirmation
-   - Recommit and watch again
+   - Show the diff for transparency, then recommit immediately — this is the user's branch, no confirmation needed for fix iterations
+   - Watch again
 8. **If `unresolvable`**: dependency issue — the package exists in the spec but not in the repo. Different repos may have different packages available. Use `search_packages` to check.
 9. **If some repos pass and others fail**: this is normal — different repos have different packages. A package that builds on Tumbleweed may fail on 15.6 due to missing deps. Read each failure separately.
 
