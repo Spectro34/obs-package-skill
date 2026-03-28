@@ -202,19 +202,21 @@ Use Claude Code's built-in `/schedule` command to run scans on a recurring basis
 
 ```
 > /schedule create --cron "0 8 * * 1" --name "weekly-obs-scan" \
-    --prompt "Scan my OBS packages. Report any outdated packages, new CVEs, or build failures that aren't marked as known issues. Keep it brief — just the dashboard."
+    --prompt "Run bash ~/.claude/skills/obs-agent/scan-packages.sh and present the results as a dashboard. Report any outdated packages, new CVEs, or build failures that aren't marked as known issues. Keep it brief."
 ```
 
-This runs every Monday at 8am. Other useful schedules:
+This runs every Monday at 8am. The prompt explicitly calls the scanner script so the scheduled agent knows exactly what to run, even without skill trigger matching.
+
+Other useful schedules:
 
 ```
 # Daily CVE check (security-focused, fast)
 > /schedule create --cron "0 7 * * *" --name "daily-cve-check" \
-    --prompt "Run the OBS package scanner and report ONLY CVE alerts and newly outdated packages. Skip build status if nothing changed."
+    --prompt "Run bash ~/.claude/skills/obs-agent/scan-packages.sh and report ONLY packages with CVE alerts or newly outdated versions. Ignore build failures."
 
 # After upstream release cycles (e.g., Ansible releases on the first week of each month)
 > /schedule create --cron "0 9 1-7 * *" --name "ansible-release-check" \
-    --prompt "Scan my OBS packages for new upstream versions. If any are outdated, show the upstream changelog summary and whether the update looks straightforward or needs manual attention."
+    --prompt "Run bash ~/.claude/skills/obs-agent/scan-packages.sh. For any outdated packages, check the upstream changelog and summarize whether the update looks straightforward or needs manual attention."
 ```
 
 Manage your schedules:
