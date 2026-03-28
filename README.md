@@ -196,6 +196,36 @@ Saved to the package's known issues. Future scans show it as "known" instead of 
 
 Shows proposed additions to package knowledge. Accept or reject each one.
 
+### Schedule automatic scans
+
+Use Claude Code's built-in `/schedule` command to run scans on a recurring basis. Scheduled agents run remotely — they'll scan your packages and notify you of anything that needs attention, even when you're not in a session.
+
+```
+> /schedule create --cron "0 8 * * 1" --name "weekly-obs-scan" \
+    --prompt "Scan my OBS packages. Report any outdated packages, new CVEs, or build failures that aren't marked as known issues. Keep it brief — just the dashboard."
+```
+
+This runs every Monday at 8am. Other useful schedules:
+
+```
+# Daily CVE check (security-focused, fast)
+> /schedule create --cron "0 7 * * *" --name "daily-cve-check" \
+    --prompt "Run the OBS package scanner and report ONLY CVE alerts and newly outdated packages. Skip build status if nothing changed."
+
+# After upstream release cycles (e.g., Ansible releases on the first week of each month)
+> /schedule create --cron "0 9 1-7 * *" --name "ansible-release-check" \
+    --prompt "Scan my OBS packages for new upstream versions. If any are outdated, show the upstream changelog summary and whether the update looks straightforward or needs manual attention."
+```
+
+Manage your schedules:
+```
+> /schedule list                    # see all scheduled agents
+> /schedule run weekly-obs-scan     # run one immediately
+> /schedule delete daily-cve-check  # remove a schedule
+```
+
+The scheduled agent has access to the same skills and scanner — it reads the registry, runs `scan-packages.sh`, and presents results. It won't make changes or commit anything unless you tell it to in the prompt.
+
 ## How it works
 
 ```
