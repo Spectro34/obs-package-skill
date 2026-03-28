@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "osc-mcp": {
+      "type": "stdio",
+      "command": "/path/to/osc-mcp",
+      "args": []
+    }
+  }
+}
