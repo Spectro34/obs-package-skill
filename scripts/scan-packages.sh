@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Scan all tracked packages: compare OBS versions against upstream,
-# check build status, detect broken links. Outputs JSON report.
+# check build status, detect broken links, check CVEs. Outputs JSON report.
 #
 # Usage: bash scan-packages.sh [--registry PATH]
 # Default registry: ~/.claude/obs-packages.json
@@ -123,6 +123,54 @@ def check_link_status(project, package):
     except:
         return "unknown"
 
+def check_cves(upstream_info, version):
+    """Query OSV API for vulnerabilities affecting this version."""
+    if not upstream_info or not version:
+        return []
+    utype = upstream_info.get("type")
+    name = upstream_info.get("name", "")
+
+    ecosystem_map = {"pypi": "PyPI", "go": "Go", "crates": "crates.io"}
+    ecosystem = ecosystem_map.get(utype)
+    if not ecosystem:
+        return []
+
+    try:
+        payload = json.dumps({"package": {"name": name, "ecosystem": ecosystem}, "version": version})
+        r = subprocess.run(
+            ["curl", "-sf", "-X", "POST", "https://api.osv.dev/v1/query", "-d", payload],
+            capture_output=True, text=True, timeout=10
+        )
+        if r.returncode == 0:
+            data = json.loads(r.stdout)
+            vulns = []
+            for v in data.get("vulns", []):
+                vuln = {
+                    "id": v.get("id", ""),
+                    "summary": v.get("summary", "")[:120],
+                    "severity": "unknown",
+                }
+                # Extract severity
+                for s in v.get("severity", []):
+                    if s.get("type") == "CVSS_V3":
+                        score = s.get("score", "")
+                        vuln["severity_score"] = score
+                # Extract aliases (CVE IDs)
+                aliases = [a for a in v.get("aliases", []) if a.startswith("CVE-")]
+                if aliases:
+                    vuln["cve"] = aliases[0]
+                # Extract fixed version
+                for affected in v.get("affected", []):
+                    for r in affected.get("ranges", []):
+                        for evt in r.get("events", []):
+                            if "fixed" in evt:
+                                vuln["fixed_in"] = evt["fixed"]
+                vulns.append(vuln)
+            return vulns
+    except:
+        pass
+    return []
+
 def scan_package(project_name, pkg_name, pkg_info):
     """Scan a single package. Returns enriched info."""
     result = {
@@ -145,13 +193,16 @@ def scan_package(project_name, pkg_name, pkg_info):
     else:
         result["up_to_date"] = None
 
+    # Check CVEs for the current OBS version
+    cves = check_cves(pkg_info.get("upstream"), obs_ver)
+    if cves:
+        result["cves"] = cves
+
     # Build status in devel
     result["devel_build"] = get_build_results(project_name, pkg_name)
 
     # If package is in a branch, check branch too
-    branch_project = None
     if pkg_info.get("in_branch"):
-        # We'll get the branch project from the parent call
         result["has_branch"] = True
     else:
         result["has_branch"] = False
