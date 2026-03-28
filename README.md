@@ -198,35 +198,31 @@ Shows proposed additions to package knowledge. Accept or reject each one.
 
 ### Schedule automatic scans
 
-Use Claude Code's built-in `/schedule` command to run scans on a recurring basis. Scheduled agents run remotely — they'll scan your packages and notify you of anything that needs attention, even when you're not in a session.
+Claude Code can run prompts on a cron schedule within your session using the `/schedule` skill. The scheduled prompt triggers the obs-agent skill like any normal message — all installed skills are available.
 
 ```
-> /schedule create --cron "0 8 * * 1" --name "weekly-obs-scan" \
-    --prompt "Run bash ~/.claude/skills/obs-agent/scan-packages.sh and present the results as a dashboard. Report any outdated packages, new CVEs, or build failures that aren't marked as known issues. Keep it brief."
+> /schedule create --cron "3 8 * * 1" --prompt "obs scan — report outdated packages, CVE alerts, and build failures that aren't known issues. Keep it brief."
 ```
 
-This runs every Monday at 8am. The prompt explicitly calls the scanner script so the scheduled agent knows exactly what to run, even without skill trigger matching.
+This fires every Monday at ~8am while your Claude Code session is running. The prompt matches the obs-agent trigger ("obs scan") so the skill handles it with the full dashboard.
 
 Other useful schedules:
 
 ```
-# Daily CVE check (security-focused, fast)
-> /schedule create --cron "0 7 * * *" --name "daily-cve-check" \
-    --prompt "Run bash ~/.claude/skills/obs-agent/scan-packages.sh and report ONLY packages with CVE alerts or newly outdated versions. Ignore build failures."
+# Daily CVE + outdated check
+> /schedule create --cron "7 7 * * *" --prompt "scan my packages — only report CVE alerts and newly outdated packages, skip build status"
 
-# After upstream release cycles (e.g., Ansible releases on the first week of each month)
-> /schedule create --cron "0 9 1-7 * *" --name "ansible-release-check" \
-    --prompt "Run bash ~/.claude/skills/obs-agent/scan-packages.sh. For any outdated packages, check the upstream changelog and summarize whether the update looks straightforward or needs manual attention."
+# Durable schedule (survives session restarts, saved to .claude/scheduled_tasks.json)
+> /schedule create --cron "3 8 * * 1" --durable --prompt "obs scan — full dashboard"
 ```
 
-Manage your schedules:
-```
-> /schedule list                    # see all scheduled agents
-> /schedule run weekly-obs-scan     # run one immediately
-> /schedule delete daily-cve-check  # remove a schedule
-```
+Note: non-durable schedules auto-expire after 7 days and only fire while the REPL is idle (not mid-conversation). Use `--durable` for schedules that should survive across sessions.
 
-The scheduled agent has access to the same skills and scanner — it reads the registry, runs `scan-packages.sh`, and presents results. It won't make changes or commit anything unless you tell it to in the prompt.
+Manage schedules:
+```
+> /schedule list       # see all active schedules
+> /schedule delete ID  # remove a schedule
+```
 
 ## How it works
 
