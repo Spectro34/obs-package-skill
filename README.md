@@ -46,25 +46,44 @@ This skill system gives Claude a **persistent brain for your packages**:
 
 3. **osc-mcp** _(optional, recommended)_ — [build from source](https://github.com/openSUSE/osc-mcp)
 
-### Install (copy 3 things)
+### One-line setup
 
 ```bash
 git clone https://github.com/Spectro34/obs-package-skill.git
 cd obs-package-skill
+bash setup.sh
+```
 
-# 1. Skills + scripts
+The setup script:
+1. Checks prerequisites (`osc` installed and configured)
+2. Installs skills, scanner scripts, and safety hook
+3. Prompts for your OBS devel project and username
+4. Discovers all packages and creates the registry
+
+You can also pass arguments to skip prompts:
+```bash
+bash setup.sh --project systemsmanagement:ansible --user myuser
+bash setup.sh --skip-init   # install skills + hook only, set up packages later
+```
+
+### Manual install
+
+If you prefer to do it step by step:
+
+```bash
+# Skills + scripts
 mkdir -p ~/.claude/skills/obs-package ~/.claude/skills/obs-agent
 cp skill/SKILL.md ~/.claude/skills/obs-package/SKILL.md
 cp skill/AGENT.md ~/.claude/skills/obs-agent/SKILL.md
 cp scripts/*.sh ~/.claude/skills/obs-agent/
 chmod +x ~/.claude/skills/obs-agent/*.sh
 
-# 2. Safety hook
+# Safety hook
 mkdir -p ~/.claude/hooks
 cp hooks/block-osc-sr.sh ~/.claude/hooks/block-osc-sr.sh
 chmod +x ~/.claude/hooks/block-osc-sr.sh
 
-# 3. Add hook to settings (merge if you have existing hooks)
+# Add hook to settings (merge if you have existing hooks)
 # See settings-example.json for the full format
 ```
 
@@ -88,14 +107,7 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-### First run — tell it what to monitor
-
-```
-> monitor systemsmanagement:ansible
-```
-
-The agent discovers all packages, detects ecosystems, creates the registry and context files. Or run the script directly:
-
+Initialize the package registry:
 ```bash
 bash ~/.claude/skills/obs-agent/init-registry.sh \
   --project systemsmanagement:ansible \
@@ -251,6 +263,7 @@ No credentials are stored in this project. Authentication is handled by:
 ```
 .
 ├── README.md                    # This file
+├── setup.sh                     # One-line setup script
 ├── skill/
 │   ├── SKILL.md                 # Single-package workflow (the worker)
 │   └── AGENT.md                 # Fleet management (scan, track, triage)
