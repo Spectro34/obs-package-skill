@@ -249,51 +249,123 @@ Depending on the task:
 
 ---
 
-## Phase 2: Build, Diagnose, Fix (The Loop)
+## Phase 2: Local Pre-flight Build (Optional)
 
-This is the core of what a package maintainer does. **Never commit without a clean build.**
+If `run_build` via osc-mcp is available, or `osc build` via CLI, run a local build first. This catches obvious errors (missing deps, broken patches, spec syntax) without waiting for OBS.
+
+```bash
+# Via CLI (works in checked-out package directory):
+osc build openSUSE_Tumbleweed x86_64 --no-verify --clean
+```
+
+Or via osc-mcp: `run_build(project, bundle, arch="x86_64", distribution="openSUSE_Tumbleweed")`
+
+- If the local build passes: good, proceed to Phase 3 (commit + OBS verification)
+- If it fails: diagnose and fix using the diagnosis table below, then retry locally
+- If local build is not practical (large package, missing local deps, no VM type configured): **skip directly to Phase 3** — OBS will be the build verification
+
+Local builds are a fast feedback loop but NOT a replacement for OBS-side builds. The OBS build environment may differ (different repos, architectures, dependency resolution).
+
+---
+
+## Phase 3: Commit and OBS Build Verification (The Real Loop)
+
+This is the core of what a package maintainer does. The only way to truly verify a package builds is to **commit to OBS and check the server-side build results**.
 
 ```
 ┌─────────────────────────────────────────────┐
-│                 RUN BUILD                    │
-│  run_build(project, bundle, arch, distro)   │
+│            PRE-COMMIT REVIEW                 │
+│  Show diff, confirm branch, get user OK     │
 └──────────────────┬──────────────────────────┘
                    │
-            ┌──────▼──────┐
-            │ Build pass? │
-            └──────┬──────┘
-              yes  │  no
-         ┌─────────┤
-         │         ▼
-         │  ┌─────────────────────────────────┐
-         │  │         READ BUILD LOG           │
-         │  │  get_build_log(project, pkg,     │
-         │  │    repo, arch)                   │
-         │  │  - First call: no filters,       │
-         │  │    last 1000 lines               │
-         │  │  - If too noisy: use match=      │
-         │  │    "error|FAIL|unresolvable"     │
-         │  └──────────┬──────────────────────┘
-         │             │
-         │      ┌──────▼──────┐
-         │      │  DIAGNOSE   │
-         │      └──────┬──────┘
-         │             │
-         │      ┌──────▼──────────────────────┐
-         │      │         APPLY FIX            │
-         │      │  (see diagnosis table below) │
-         │      └──────┬──────────────────────┘
-         │             │
-         │             ▼
-         │       Rebuild (loop back to top)
-         │       Max 5 iterations, then ask user
-         │
-         ▼
-  ┌──────────────────┐
-  │  BUILD CLEAN     │
-  │  → Phase 3       │
-  └──────────────────┘
+            ┌──────▼──────────────────────────┐
+            │  COMMIT TO OBS (branch only)     │
+            │  osc ci -m "message"             │
+            │  or commit via osc-mcp           │
+            └──────────────────┬──────────────┘
+                               │
+            ┌──────────────────▼──────────────┐
+            │  WATCH OBS BUILD RESULTS         │
+            │  osc results <prj> <pkg> -w      │
+            │  (waits until all repos finish)   │
+            └──────────────────┬──────────────┘
+                               │
+                        ┌──────▼──────┐
+                        │ All green?  │
+                        └──────┬──────┘
+                          yes  │  no
+                     ┌─────────┤
+                     │         ▼
+                     │  ┌─────────────────────────┐
+                     │  │   READ OBS BUILD LOG     │
+                     │  │   get_build_log(project, │
+                     │  │     pkg, repo, arch)     │
+                     │  │   for each failed repo   │
+                     │  └──────────┬──────────────┘
+                     │             │
+                     │      ┌──────▼──────┐
+                     │      │  DIAGNOSE   │
+                     │      └──────┬──────┘
+                     │             │
+                     │      ┌──────▼──────────────┐
+                     │      │     APPLY FIX        │
+                     │      └──────┬──────────────┘
+                     │             │
+                     │      ┌──────▼──────────────┐
+                     │      │  RECOMMIT TO OBS     │
+                     │      │  (show diff, confirm)│
+                     │      └──────┬──────────────┘
+                     │             │
+                     │             ▼
+                     │       Watch again (loop)
+                     │       Max 5 iterations
+                     │
+                     ▼
+              ┌──────────────────┐
+              │  ALL BUILDS PASS │
+              │  → Phase 4       │
+              └──────────────────┘
 ```
+
+### Step-by-step:
+
+1. **Show the diff** of all changed files and get user confirmation
+2. **Verify project** is a personal branch (`home:*:branches:*`)
+3. **Commit** to OBS:
+   - Via osc-mcp: `commit(message="...", directory="...")`
+   - Via CLI: `osc ci -m "..."`
+4. **Watch the build** — wait for all repos to finish:
+   ```bash
+   osc results <project> <package> -w
+   ```
+   This blocks until all repos report a final state. Typical wait: 2-15 minutes depending on package size and scheduler load.
+5. **Check results**:
+   ```bash
+   osc results <project> <package>
+   ```
+   Look for `succeeded`, `failed`, `unresolvable`, or `broken` per repo/arch.
+6. **If all succeeded**: done — proceed to Phase 4
+7. **If any failed**:
+   - Read the OBS build log for each failed repo/arch using `get_build_log` (osc-mcp) or `osc buildlog <repo> <arch>` (CLI)
+   - Diagnose using the table below
+   - Apply the fix locally
+   - Show the new diff, get user confirmation
+   - Recommit and watch again
+8. **If `unresolvable`**: dependency issue — the package exists in the spec but not in the repo. Different repos may have different packages available. Use `search_packages` to check.
+9. **If some repos pass and others fail**: this is normal — different repos have different packages. A package that builds on Tumbleweed may fail on 15.6 due to missing deps. Read each failure separately.
+
+### Important: `unresolvable` vs `failed` vs `broken`
+
+| Status | Meaning | How to fix |
+|--------|---------|------------|
+| `succeeded` | Build completed successfully | Nothing to do |
+| `failed` | Build ran but a command returned non-zero | Read the build log — the error is in there |
+| `unresolvable` | OBS can't satisfy BuildRequires from available repos | Check which dep is missing with `osc buildinfo` or read the unresolvable message. The dep may not exist in that repo. |
+| `broken` | Package source is broken (bad spec, link conflict, missing source) | Fix the source-level issue (spec syntax, repair link, run services) |
+| `disabled` | Build disabled for this repo/arch | Intentional — ignore unless user asks |
+| `excluded` | Package excluded from this repo/arch (ExcludeArch in spec) | Intentional — ignore |
+| `blocked` | Waiting for a dependency to build first | Wait — will resolve automatically |
+| `scheduled` / `building` | In queue or currently building | Wait |
 
 ### Build Failure Diagnosis Table
 
@@ -344,31 +416,28 @@ When a build fails with `nothing provides X`:
 
 ---
 
-## Phase 3: Pre-commit Review
+## Phase 4: After All Builds Pass — STOP
 
-Only reach this phase when the build is **clean** (exit 0, no rpmlint errors).
+Only reach this phase when `osc results` shows **all relevant repos succeeded** (repos that are `disabled` or `excluded` are OK to ignore).
 
-1. **Show the full diff** of all changed files (spec, changes, patches, _service)
-2. **Summarize what changed and why:**
-   - Version: old → new
-   - Patches added/removed/kept (and why for each)
-   - Dependencies added/removed
-   - Files list changes
-   - Any test adjustments
-3. **Confirm the project** is a personal branch (`home:*:branches:*`)
-4. **Ask the user to confirm** the commit
-5. **Commit** with `commit` tool using a descriptive message summarizing all changes
+Present the final report:
 
----
+```
+## Build Results: <package>
+| Repository | Arch | Status |
+|------------|------|--------|
+| openSUSE_Tumbleweed | x86_64 | succeeded |
+| openSUSE_Tumbleweed | i586 | succeeded |
+| 15.6 | x86_64 | succeeded |
+| ... | ... | ... |
 
-## Phase 4: After Commit — STOP
+All builds passed. Changes committed to <project>/<package>.
+To submit, run: osc sr <project> <package> <target_project>
+```
 
-Tell the user:
-- "Changes committed to `{project}/{package}`. Build is clean on `{repo}/{arch}`."
-- "When you're ready to submit, run `osc sr` to create a submit request to `{target_project}`."
-- Show the target project (from `_link` file or branch metadata).
-- If there are other repos/arches configured, suggest: "You may want to verify the build succeeds on all targets with `osc results {project} {package}`."
-- Do NOT attempt to create the SR.
+Show the target project (from `_link` file or branch metadata).
+
+**Do NOT attempt to create the SR.**
 
 ---
 
