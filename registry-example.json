@@ -1,0 +1,23 @@
+{
+  "maintainer": {
+    "obs_user": "your-obs-username",
+    "branch_prefix": "home:your-obs-username:branches"
+  },
+  "projects": {
+    "devel:your:project": {
+      "devel_project": "devel:your:project",
+      "branch_project": "home:your-obs-username:branches:devel:your:project",
+      "target_projects": ["openSUSE:Factory"],
+      "packages": {
+        "example-package": {
+          "ecosystem": "python",
+          "obs_version": "1.0.0",
+          "in_branch": false,
+          "in_home": true,
+          "upstream": {"type": "pypi", "name": "example-package"},
+          "known_issues": []
+        }
+      }
+    }
+  }
+}

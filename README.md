@@ -1,10 +1,43 @@
 # obs-package-skill
 
-A Claude Code skill and safety hook for Open Build Service (OBS) package maintenance workflows. Designed to work with [osc-mcp](https://github.com/openSUSE/osc-mcp) as the MCP server backend, with automatic fallback to the `osc` CLI.
+Claude Code skills for Open Build Service (OBS) package maintenance. Two skills that work together: an **agent** that tracks your full package fleet, and a **workflow engine** that does the actual package work. Designed to work with [osc-mcp](https://github.com/openSUSE/osc-mcp) as the MCP server backend, with automatic fallback to the `osc` CLI.
 
-## What it does
+## Two skills, one job
 
-The `/obs-package` skill guides Claude Code through the OBS package update workflow:
+### `/obs-agent` — Fleet management (scan, track, triage)
+
+Tracks all your packages, scans for upstream updates, reports build health, and dispatches work:
+
+```
+> scan my packages
+
+## Package Dashboard — 2026-03-28
+| Package          | OBS     | Upstream | Status    | Build      |
+|------------------|---------|----------|-----------|------------|
+| ansible-creator  | 25.12.0 | 26.3.2   | OUTDATED  | all green  |
+| molecule         | 26.3.0  | 26.3.0   | current   | link broken|
+| ansible-lint     | 26.3.0  | 26.3.0   | current   | all green  |
+| ...              |         |          |           |            |
+
+3 packages need attention. Work on something?
+```
+
+### `/obs-package` — Single-package workflow (the worker)
+
+When you pick a package to work on, this skill takes over:
+
+1. **Gather context** — spec, changelog, upstream changes, build status, patches, pending SRs
+2. **Make changes** — version bump, patch, fix (knows Python/Go/Rust packaging)
+3. **Build and verify** — commits to OBS, watches `osc results -w`, reads build logs
+4. **Diagnose and fix** — if build fails, reads the log, identifies the problem, applies the fix, rebuilds
+5. **Iterate** — up to 5 build-fix cycles before asking for help
+6. **Stop** — tells you to run `osc sr` manually
+
+The skill never touches anything outside your branch project.
+
+## What it does (single package detail)
+
+The `/obs-package` skill handles the full OBS package update workflow:
 
 1. **Identify** the package and project (auto-detects from `.osc/` metadata)
 2. **Inspect** current state (spec file, changelog, source files, pending changes)
@@ -112,13 +145,23 @@ go build -o osc-mcp .
 
 ## Installation
 
-### 1. Install the skill
+### 1. Install the skills
 
-Copy `skill/SKILL.md` to your Claude Code skills directory:
+Copy both skills and the scanner to your Claude Code skills directory:
 
 ```bash
+# Single-package workflow
 mkdir -p ~/.claude/skills/obs-package
 cp skill/SKILL.md ~/.claude/skills/obs-package/SKILL.md
+
+# Fleet agent + scanner
+mkdir -p ~/.claude/skills/obs-agent
+cp skill/AGENT.md ~/.claude/skills/obs-agent/SKILL.md
+cp scripts/scan-packages.sh ~/.claude/skills/obs-agent/scan-packages.sh
+chmod +x ~/.claude/skills/obs-agent/scan-packages.sh
+
+# Initialize package registry (edit with your packages)
+cp registry-example.json ~/.claude/obs-packages.json
 ```
 
 ### 2. Install the safety hook
@@ -211,15 +254,35 @@ The skill will:
 - Show you the diff and ask before committing
 - Stop after commit — you create the SR yourself
 
+### Package registry
+
+The agent tracks your packages in `~/.claude/obs-packages.json`. See `registry-example.json` for the format. The registry stores:
+- Which packages you maintain and where (devel project, branch project)
+- The ecosystem for each (python, go, rust, generic)
+- Where to check for upstream versions (PyPI, GitHub, Go proxy, crates.io)
+- Known issues to ignore (e.g., "15.6 unresolvable is expected")
+
+To populate it automatically, run the scanner — it will discover packages from your OBS home/branch projects.
+
+To teach the agent about expected failures:
+```
+> molecule failing on 15.6 is expected, those repos don't have ansible-navigator
+```
+It saves this to `known_issues` in the registry and won't flag it again.
+
 ## Project structure
 
 ```
 .
 ├── README.md                  # This file
 ├── skill/
-│   └── SKILL.md               # Claude Code skill definition
+│   ├── SKILL.md               # Single-package workflow skill
+│   └── AGENT.md               # Fleet management / scanner skill
+├── scripts/
+│   └── scan-packages.sh       # Package scanner (checks OBS + upstream)
 ├── hooks/
 │   └── block-osc-sr.sh        # PreToolUse hook to block submit requests
+├── registry-example.json      # Example package registry
 ├── mcp-config-example.json    # Example .mcp.json for osc-mcp setup
 └── settings-example.json      # Example Claude Code settings with hook
 ```
