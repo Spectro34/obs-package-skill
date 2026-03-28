@@ -1,0 +1,17 @@
+# User-specific data — never commit these
+obs-packages.json
+obs-packages/
+*.bak
+
+# OBS checkout artifacts
+.osc/
+*.obscpio
+*.obsinfo
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
