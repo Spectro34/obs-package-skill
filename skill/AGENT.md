@@ -238,10 +238,14 @@ When user says "review context" or "what did you learn":
 
 ### Track a new package (`track <package>`)
 1. Search OBS: `osc se <name> -s`
-2. Detect ecosystem from spec
-3. Add to `~/.claude/obs-packages.json`
-4. Generate initial context file by reading spec
-5. Run initial scan on just that package
+2. **If the package exists on OBS:**
+   - Detect ecosystem from spec
+   - Add to `~/.claude/obs-packages.json`
+   - Generate initial context file by reading spec
+   - Run initial scan on just that package
+3. **If the package does NOT exist on OBS** and the user wants to create it:
+   - Dispatch to `/obs-package` skill with the new-package flow (Phase 0.0 → Phase 1-New)
+   - After `/obs-package` creates and builds it successfully, add to registry and generate context file
 
 ### Stop tracking (`untrack <package>`)
 1. Remove from registry

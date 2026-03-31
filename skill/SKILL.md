@@ -1,6 +1,6 @@
 # OBS Package Workflow
 
-TRIGGER when: user asks to update/bump/package/build an OBS package, mentions "osc", "obs", "spec file", "changelog", ".changes", "submit request", "version bump", or is working in a directory containing .osc/ metadata or .spec files.
+TRIGGER when: user asks to update/bump/package/build/create an OBS package, mentions "new package", "create package", "bootstrap package", "repackage", "package X for openSUSE", "package X for Tumbleweed", "osc", "obs", "spec file", "changelog", ".changes", "submit request", "version bump", or is working in a directory containing .osc/ metadata or .spec files.
 DO NOT TRIGGER when: user is working on ansible playbooks/roles (not packaging), editing n8n workflows, or doing general coding unrelated to OBS.
 
 ## Overview
@@ -12,7 +12,7 @@ Use the `osc-mcp` MCP server tools when available, fall back to `osc` CLI via Ba
 ## Safety Rules — READ FIRST
 
 1. **NEVER open a submit request (SR).** The osc-mcp server does not have an SR creation tool, and you must not attempt to create one via CLI either. When the package is ready for submission, tell the user and let them do it manually.
-2. **Only commit to branch projects.** Verify the working project is a branch (typically `home:<user>:branches:*`) before any commit. If the project does not look like a personal branch, STOP and confirm with the user.
+2. **Only commit to branch or home projects.** Verify the working project is a branch (typically `home:<user>:branches:*`) or a personal home project (`home:<user>`) before any commit. For new packages created from scratch, `home:<user>` is a valid commit target since there's no devel project to branch from. If the project does not look like a personal branch or home project, STOP and confirm with the user.
 3. **Never commit to devel or release projects** like `devel:languages:python`, `SUSE:SLE-*:Update`, `SUSE:SLE-*:GA`, or `openSUSE:Factory`. These are targets, not workspaces.
 4. **Commits to branches are autonomous.** Show the diff for transparency but do NOT wait for user confirmation — this is the user's own branch. Commit, then verify via OBS build results. The only gate is the SR (which the user does manually).
 5. **Validate before building.** Check that spec file parses and changelog is properly formatted before triggering a build.
@@ -47,6 +47,59 @@ If osc-mcp is NOT configured, fall back to `osc` CLI commands via Bash, applying
 ## Phase 0: Context Gathering
 
 **This is the most important phase.** Before making any changes, build a complete picture of the package. A well-informed maintainer gets it right on the first build. Run as many of these in parallel as possible.
+
+### 0.0 — Detect New vs Existing Package
+
+Before doing anything else, determine whether this is a **new package** (needs to be created from scratch) or an **existing package** (needs maintenance/updates).
+
+**Detection logic:**
+- User explicitly says "create", "new package", "package X for openSUSE", "repackage" → **new package**
+- Use `search_bundle` (or `osc se -s <name>`) to search OBS → if zero results → **new package**
+- If results found → **existing package** → skip to 0.1
+
+**If new package — run these steps, then skip to Phase 1-New:**
+
+1. **Identify source**: Ask/determine where the software comes from:
+   - URL to upstream source, GitHub repo, PyPI name, or a binary to repackage (e.g., extracting from a Windows installer)
+   - If adapting from another distro's spec (e.g., Fedora RPM), note it as a reference — dependencies will need translating
+
+2. **Determine ecosystem**: Inspect upstream build files if available:
+   - `pyproject.toml` / `setup.py` → Python
+   - `go.mod` → Go
+   - `Cargo.toml` → Rust
+   - `package.json` / Electron app → Node
+   - `pom.xml` → Java
+   - Binary redistribution (no build system) → Repackaging
+   - If unclear, ask the user
+
+3. **Determine target project**: Default to `home:<user>` for personal packages. Ask user if it should go elsewhere.
+
+4. **Check/create project**: Use `get_project_meta` (or `osc meta prj <project>`) to check if the project exists.
+   - If it doesn't exist, create it with `set_project_meta` (or `osc meta prj <project> -F -`):
+     - Default repos: `openSUSE_Tumbleweed` with `x86_64` arch
+     - Ask user if additional targets are needed (Leap, SLE, aarch64)
+
+5. **Create package scaffolding**: Use `mcp__osc-mcp__create` with appropriate `flavor`:
+
+   | Ecosystem | Flavor | Service |
+   |-----------|--------|---------|
+   | Python | `python` | `download_files` or `tar_scm` |
+   | Go | `go` | `tar_scm` + `go_modules` |
+   | Rust | `cargo` | `tar_scm` + `cargo_vendor` |
+   | Node/Electron | `node` | `node_modules` or `download_files` |
+   | Java | `java` | `tar_scm` |
+   | Repackaging | `default` | `download_files` or manual sources |
+
+   If osc-mcp is unavailable, use CLI: `osc mkpac <project> <package>` then `osc co <project> <package>`.
+
+6. **For repackaging scenarios** (no standard build system, binary redistribution):
+   - Use `default` flavor — the spec will be written from scratch in Phase 1-New
+   - Sources may need to be uploaded manually (pre-downloaded .exe, tarballs, etc.)
+   - Note: OBS builds have **no network access** — all sources must be pre-fetched and uploaded
+
+7. **Proceed to Phase 1-New** (skip 0.1–0.10 which assume existing package)
+
+**If existing package — continue with 0.1 below.**
 
 ### 0.1 — Locate the package
 
@@ -266,9 +319,81 @@ Depending on the task:
 
 ---
 
+## Phase 1-New: Create Initial Spec (for new packages only)
+
+This phase replaces Phase 1 when creating a new package (detected in Phase 0.0). After this phase, proceed to Phase 2 as normal.
+
+### 1-New.1 — Spec generation strategy
+
+Choose based on how the package was scaffolded:
+
+- **`create` tool generated a skeleton spec** → Read it with `list_source_files`, then customize: fill in `Version`, `Source`, `BuildRequires`, `%description`, `%files`, etc.
+- **Adapting from another distro's spec** (e.g., Fedora RPM) → Use it as a reference but **translate all dependency names** using the mapping table below. Do NOT copy Fedora deps verbatim.
+- **Repackaging** (binary redistribution, like extracting from a Windows .exe) → Write spec from scratch using `edit_file`. Key patterns:
+  - `AutoReqProv: no` — disable automatic dependency detection for bundled apps
+  - Pre-fetched sources as `Source0:`, `Source1:`, etc.
+  - `%prep` handles extraction/patching
+  - `%install` copies files to `%{buildroot}`
+  - Explicit `Requires:` for all runtime deps (no auto-detection)
+
+### 1-New.2 — SUSE dependency name mapping
+
+**Critical for avoiding build failures.** When writing specs for openSUSE, use SUSE package names, not Fedora/upstream names. Common translations:
+
+| Upstream / Fedora name | openSUSE (Tumbleweed) name | Notes |
+|------------------------|---------------------------|-------|
+| `gtk3` | `libgtk-3-0` | Runtime lib; `gtk3-devel` for BuildRequires |
+| `gtk4` | `libgtk-4-1` | Runtime lib; `gtk4-devel` for BuildRequires |
+| `alsa-lib` | `alsa` | |
+| `alsa-lib-devel` | `alsa-devel` | |
+| `mesa-libgbm` | `libgbm1` | |
+| `cups-libs` | `libcups2` | |
+| `dbus-libs` | `libdbus-1-3` | |
+| `nss` | `mozilla-nss` | |
+| `p7zip-plugins` | `7zip` | |
+| `nodejs` / `npm` | `nodejs-common` | Use generic name, not version-specific like `nodejs22` |
+| `libappindicator-gtk3` | `libappindicator3-1` | Or use `typelib-1_0-AppIndicator3-0_1` |
+| `libxss1` | `libXss1` | Case-sensitive on SUSE |
+| `libsecret` | `libsecret-2-0` | Runtime; `libsecret-devel` for build |
+
+**For unmapped dependencies**, use this strategy:
+1. `search_packages(path="openSUSE_Tumbleweed", path_repository="standard", pattern="<name>")` — find SUSE equivalent
+2. `osc se -s <name>` as fallback
+3. Try `rpm -qa | grep -i <name>` on a local Tumbleweed machine
+4. If not found, tell the user the dep needs packaging first
+
+### 1-New.3 — Pre-build validation
+
+**Before moving to Phase 2, validate the spec will succeed.** This step prevents wasting OBS build cycles on obvious errors — it would have saved 3 revisions on the claude-desktop package.
+
+1. **Verify all `BuildRequires` exist** in the target repo:
+   ```bash
+   # For each BuildRequires in the spec:
+   osc se -s <dep-name> -r openSUSE:Factory
+   # Or via osc-mcp:
+   search_packages(path="openSUSE_Tumbleweed", path_repository="standard", pattern="<dep-name>")
+   ```
+   If a dep doesn't exist under that name, check the mapping table above or search for alternatives.
+
+2. **Verify all `Requires` exist** the same way.
+
+3. **Check for SUSE-specific packaging requirements**:
+   - If the package installs icons to `%{_datadir}/icons/hicolor/` → add `BuildRequires: hicolor-icon-theme` AND `Requires: hicolor-icon-theme` (SUSE requires directory ownership)
+   - If the package installs a `.desktop` file → add `BuildRequires: desktop-file-utils` and use `desktop-file-install`
+   - If the package uses `%{_libdir}` → remember this is `/usr/lib64` on x86_64 SUSE, not `/usr/lib`
+   - If using `gtk-update-icon-cache` in `%post` → replace with `touch --no-create` (the tool may not be in the build env)
+
+4. **Validate changelog date**: Use `date -d "YYYY-MM-DD" +"%a"` to get the correct day-of-week. OBS will warn on bogus dates.
+
+After validation passes, proceed to Phase 2 (local pre-flight build) or Phase 3 (commit to OBS).
+
+---
+
 ## Phase 2: Local Pre-flight Build (Optional)
 
 If `run_build` via osc-mcp is available, or `osc build` via CLI, run a local build first. This catches obvious errors (missing deps, broken patches, spec syntax) without waiting for OBS.
+
+**For new packages, local pre-flight is especially valuable** — it catches dependency name issues before committing to OBS and waiting for the build queue. The Phase 1-New.3 validation should have caught most issues, but a local build is the definitive test.
 
 ```bash
 # Via CLI (works in checked-out package directory):
@@ -347,7 +472,7 @@ This is the core of what a package maintainer does. The only way to truly verify
 
 ### Step-by-step:
 
-1. **Verify project** is a personal branch (`home:*:branches:*`) — if not, STOP
+1. **Verify project** is a personal branch (`home:*:branches:*`) or a personal home project (`home:<user>`) for new packages — if neither, STOP
 2. **Show the diff** of all changed files for transparency — do NOT wait for confirmation, this is the user's branch
 3. **Commit** to OBS:
    - Via osc-mcp: `commit(message="...", directory="...")`
@@ -404,6 +529,10 @@ Read the build log and match against these patterns:
 | `Bad exit status from /var/tmp/rpm-tmp.*` | Script failure in %prep/%build/%install | Read lines before this error in the log. The actual failure is above — a command returned non-zero. |
 | `configure: error: ... not found` | Missing build dependency (autotools) | The `configure` script is telling you exactly what library is needed. Search for the `-devel` package. |
 | `CMake Error ... could not find` | Missing build dependency (cmake) | Search for the cmake module package or the `-devel` package that provides the `.cmake` file. |
+| `directories not owned by a package: /usr/share/icons/hicolor` | Missing icon theme directory ownership | Add `BuildRequires: hicolor-icon-theme` AND `Requires: hicolor-icon-theme`. SUSE requires directories to be owned by a package. |
+| `nothing provides <name>` where name looks like a Fedora package | Fedora/upstream dep name used instead of SUSE name | Consult the SUSE dependency mapping table in Phase 1-New.2, or use `search_packages` to find the SUSE equivalent. Common: `gtk3`→`libgtk-3-0`, `alsa-lib`→`alsa`, `mesa-libgbm`→`libgbm1`, `cups-libs`→`libcups2`. |
+| `bogus date in %changelog` | Wrong day-of-week for the date | Use `date -d "YYYY-MM-DD" +"%a"` to compute the correct day-of-week for the changelog date. |
+| `command not found: <tool>` in `%post` / `%postun` | Runtime tool not available in build env | Either add `Requires(post): <package>` or replace with a portable alternative (e.g., use `touch --no-create` instead of `gtk-update-icon-cache`). |
 
 ### Build log reading strategy
 
