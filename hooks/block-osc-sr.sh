@@ -41,7 +41,8 @@ if echo "$NORMALIZED" | grep -qE '\bosc\s+request\s+create\b'; then
 fi
 
 # Block: direct OBS API POST/PUT to /request endpoint
-if echo "$NORMALIZED" | grep -qE '\bosc\s+api\s+.*(-X\s*(POST|PUT)|--method\s*(POST|PUT)).*(/request|/source.*\?.*cmd=)'; then
+# NORMALIZED was lowercased above, so the regex must also be lowercase.
+if echo "$NORMALIZED" | grep -qE '\bosc\s+api\s+.*(-x\s*(post|put)|--method\s*(post|put)).*(/request|/source.*\?.*cmd=)'; then
     echo "BLOCKED: direct OBS API request creation is not allowed." >&2
     exit 2
 fi

@@ -17,7 +17,16 @@ while [[ $# -gt 0 ]]; do
         --package) PACKAGE="$2"; shift 2 ;;
         --branch)  BRANCH="$2"; shift 2 ;;
         --output)  OUTPUT="$2"; shift 2 ;;
-        *) echo "Unknown arg: $1" >&2; exit 1 ;;
+        -h|--help)
+            echo "Usage: bash generate-context.sh --project <project> --package <name> [--branch <branch-project>] [--output <path>]"
+            echo ""
+            echo "  --project  OBS project containing the package"
+            echo "  --package  Package name"
+            echo "  --branch   Branch project (optional)"
+            echo "  --output   Output path (default: ~/.claude/obs-packages/context/<package>.md)"
+            exit 0
+            ;;
+        *) echo "Unknown arg: $1. Use --help for usage." >&2; exit 1 ;;
     esac
 done
 

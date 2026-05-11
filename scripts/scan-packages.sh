@@ -7,13 +7,26 @@
 
 set -euo pipefail
 
-REGISTRY="${1:-$HOME/.claude/obs-packages.json}"
+REGISTRY="$HOME/.claude/obs-packages.json"
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --registry) REGISTRY="$2"; shift 2 ;;
+        -h|--help)
+            echo "Usage: bash scan-packages.sh [--registry PATH]"
+            echo "  --registry PATH   Registry file (default: ~/.claude/obs-packages.json)"
+            exit 0
+            ;;
+        *) echo "Unknown arg: $1. Use --help for usage." >&2; exit 1 ;;
+    esac
+done
 
 if [ ! -f "$REGISTRY" ]; then
     echo '{"error": "Registry not found at '"$REGISTRY"'"}' >&2
     exit 1
 fi
 
+export REGISTRY
 python3 << 'PYEOF'
 import json, subprocess, sys, os, re
 from datetime import datetime, timezone

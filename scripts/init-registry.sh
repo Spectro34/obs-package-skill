@@ -23,7 +23,16 @@ while [[ $# -gt 0 ]]; do
         --user)     USER="$2"; shift 2 ;;
         --branch)   BRANCH="$2"; shift 2 ;;
         --registry) REGISTRY="$2"; shift 2 ;;
-        *) echo "Unknown arg: $1" >&2; exit 1 ;;
+        -h|--help)
+            echo "Usage: bash init-registry.sh --project <devel-project> [--user <obs-user>] [--branch <branch-project>] [--registry PATH]"
+            echo ""
+            echo "  --project   OBS devel project to monitor (e.g., systemsmanagement:ansible)"
+            echo "  --user      Your OBS username (auto-detected via 'osc whois' if omitted)"
+            echo "  --branch    Branch project (default: home:<user>:branches:<project>)"
+            echo "  --registry  Registry file (default: ~/.claude/obs-packages.json)"
+            exit 0
+            ;;
+        *) echo "Unknown arg: $1. Use --help for usage." >&2; exit 1 ;;
     esac
 done
 
