@@ -296,7 +296,11 @@ Depending on the task:
 1. Update `Version:` in spec
 2. Update `Source:` URL or `_service` revision tag to match new version
 3. Reset `Release:` to `0`
-4. Run `run_services` to fetch new sources (if `_service` exists)
+4. **Fetch/sync source tarballs using OBS services** — NEVER manually download sources with `curl` or `wget`:
+   - If a `_service` file exists (e.g., `download_files`, `obs_scm`): run `osc service runall` in the package checkout directory. This reads the Source URLs from the spec, downloads new/updated tarballs, and removes tarballs that no longer match any Source entry — all in one step.
+   - Via osc-mcp: use `run_services` tool
+   - Via CLI: `osc service runall` (in the package checkout directory)
+   - This is the standard OBS workflow and ensures source integrity and consistency
 5. Check if patches still apply:
    - For each patch: was the underlying issue fixed upstream? (check upstream changelog from Phase 0.8)
    - If fixed upstream: remove the patch file, its `PatchN:` header, and its `%patchN` application line
