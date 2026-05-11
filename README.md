@@ -78,12 +78,13 @@ cp skill/AGENT.md ~/.claude/skills/obs-agent/SKILL.md
 cp scripts/*.sh ~/.claude/skills/obs-agent/
 chmod +x ~/.claude/skills/obs-agent/*.sh
 
-# Safety hook
+# Safety hooks
 mkdir -p ~/.claude/hooks
-cp hooks/block-osc-sr.sh ~/.claude/hooks/block-osc-sr.sh
-chmod +x ~/.claude/hooks/block-osc-sr.sh
+cp hooks/block-osc-sr.sh  ~/.claude/hooks/block-osc-sr.sh
+cp hooks/block-secrets.sh ~/.claude/hooks/block-secrets.sh
+chmod +x ~/.claude/hooks/block-osc-sr.sh ~/.claude/hooks/block-secrets.sh
 
-# Add hook to settings (merge if you have existing hooks)
+# Add hooks to settings (merge if you have existing hooks)
 # See settings-example.json for the full format
 ```
 
@@ -95,11 +96,14 @@ Add to `~/.claude/settings.json`:
       {
         "matcher": "Bash",
         "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/block-osc-sr.sh",
-            "timeout": 3
-          }
+          { "type": "command", "command": "bash ~/.claude/hooks/block-osc-sr.sh",  "timeout": 3 },
+          { "type": "command", "command": "bash ~/.claude/hooks/block-secrets.sh", "timeout": 3 }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/block-secrets.sh", "timeout": 3 }
         ]
       }
     ]
@@ -234,7 +238,8 @@ Manage schedules:
 │       ├── ansible-creator.md
 │       └── molecule.md
 ├── hooks/
-│   └── block-osc-sr.sh                  # Blocks submit requests
+│   ├── block-osc-sr.sh                  # Blocks submit requests
+│   └── block-secrets.sh                 # Blocks reads/commands that expose secrets
 └── skills/
     ├── obs-agent/                       # Fleet management
     │   ├── SKILL.md                     # Scan, track, triage, context
@@ -286,6 +291,23 @@ No credentials are stored in this project. Authentication is handled by:
 - `osc-mcp`: reads from oscrc, kernel keyring, or D-Bus Secret Service
 - The `.gitignore` excludes `obs-packages.json` and `obs-packages/` to prevent accidentally committing user-specific data
 
+### Secret-redaction hook
+
+`hooks/block-secrets.sh` is a PreToolUse guardrail that prevents secrets from ever reaching Claude's context. It fires on **both `Bash` and `Read`** and rejects (exit 2) operations that would expose credentials:
+
+| Category | Blocks |
+|----------|--------|
+| oscrc credentials | `cat ~/.oscrc`, `osc config --dump[-full]` |
+| SSH private keys | reads of `~/.ssh/id_*`, `*.pem`, `*.key`, `id_rsa`/`id_ed25519`/`id_ecdsa`/`id_dsa` (but allows `*.pub`) |
+| GPG secret material | `gpg --export-secret-keys`, `--export-secret-subkeys`, reads under `~/.gnupg/private-keys-v1.d/` |
+| Shell credential files | `~/.netrc`, `~/.authinfo` |
+| Cloud credentials | `~/.aws/credentials`, `~/.config/gh/hosts.yml` |
+| Inline HTTP auth | `curl`/`wget` with `Authorization:` header or `-u user:pass` |
+| Credential env vars | `env`/`printenv` combined with `TOKEN`, `PASSWORD`, `API_KEY`, `AWS_SECRET`, `GH_TOKEN`, etc. |
+| Git credential leakage | `git config --get *.password` / `*.token` |
+
+**Why PreToolUse and not PostToolUse:** Claude Code's PostToolUse hooks cannot rewrite tool output — `additionalContext` only appends, and `decision: "block"` aborts the whole task. The only way to truly redact is to stop the read/command before it executes. PreToolUse blockers are therefore the canonical mechanism for secret containment.
+
 ## Project structure
 
 ```
@@ -300,7 +322,8 @@ No credentials are stored in this project. Authentication is handled by:
 │   ├── init-registry.sh         # First-run: discover all packages, create registry
 │   └── generate-context.sh      # Generate context file for one package
 ├── hooks/
-│   └── block-osc-sr.sh          # PreToolUse hook — blocks submit requests
+│   ├── block-osc-sr.sh          # PreToolUse hook — blocks submit requests
+│   └── block-secrets.sh         # PreToolUse hook — blocks reads/commands that expose secrets
 ├── registry-example.json        # Example registry template
 ├── context-example.md           # Example per-package context file
 ├── mcp-config-example.json      # Example .mcp.json for osc-mcp

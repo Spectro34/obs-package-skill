@@ -8,6 +8,21 @@
             "type": "command",
             "command": "bash /path/to/hooks/block-osc-sr.sh",
             "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "bash /path/to/hooks/block-secrets.sh",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /path/to/hooks/block-secrets.sh",
+            "timeout": 3
           }
         ]
       }

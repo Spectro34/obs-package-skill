@@ -76,27 +76,34 @@ echo "  ~/.claude/skills/obs-agent/ (SKILL.md + 3 scripts)"
 
 echo ""
 
-# --- Install hook ---
-echo "Installing safety hook..."
+# --- Install hooks ---
+echo "Installing safety hooks..."
 
 mkdir -p ~/.claude/hooks
-cp "$SCRIPT_DIR/hooks/block-osc-sr.sh" ~/.claude/hooks/block-osc-sr.sh
-chmod +x ~/.claude/hooks/block-osc-sr.sh
-echo "  ~/.claude/hooks/block-osc-sr.sh"
+cp "$SCRIPT_DIR/hooks/block-osc-sr.sh"  ~/.claude/hooks/block-osc-sr.sh
+cp "$SCRIPT_DIR/hooks/block-secrets.sh" ~/.claude/hooks/block-secrets.sh
+chmod +x ~/.claude/hooks/block-osc-sr.sh ~/.claude/hooks/block-secrets.sh
+echo "  ~/.claude/hooks/block-osc-sr.sh   (blocks osc sr commands)"
+echo "  ~/.claude/hooks/block-secrets.sh  (blocks reads/commands that expose secrets)"
 
-# Add hook to settings.json if not already there
+# Add hooks to settings.json if not already there
 SETTINGS="$HOME/.claude/settings.json"
 if [ -f "$SETTINGS" ]; then
-    if grep -q "block-osc-sr" "$SETTINGS" 2>/dev/null; then
-        echo "  Hook already in settings.json"
+    HAS_SR=$(grep -q "block-osc-sr"  "$SETTINGS" 2>/dev/null && echo yes || echo no)
+    HAS_SEC=$(grep -q "block-secrets" "$SETTINGS" 2>/dev/null && echo yes || echo no)
+    if [ "$HAS_SR" = yes ] && [ "$HAS_SEC" = yes ]; then
+        echo "  Hooks already in settings.json"
     else
         echo ""
-        echo "NOTE: Add the PreToolUse hook to $SETTINGS manually:"
-        echo '  See settings-example.json for the format.'
-        echo '  The hook must fire on Bash tool calls to block osc sr commands.'
+        echo "NOTE: settings.json exists but is missing one or both hooks."
+        [ "$HAS_SR"  = no ] && echo "  - block-osc-sr.sh  (PreToolUse on Bash)"
+        [ "$HAS_SEC" = no ] && echo "  - block-secrets.sh (PreToolUse on Bash AND Read)"
+        echo "  Merge from settings-example.json manually."
     fi
 else
     cp "$SCRIPT_DIR/settings-example.json" "$SETTINGS"
+    # Rewrite /path/to/hooks → the actual install path
+    sed -i "s|/path/to/hooks|$HOME/.claude/hooks|g" "$SETTINGS"
     echo "  Created $SETTINGS with hook config"
 fi
 
@@ -154,7 +161,7 @@ echo "=== Setup complete ==="
 echo ""
 echo "Installed:"
 echo "  Skills:   ~/.claude/skills/obs-package/ + ~/.claude/skills/obs-agent/"
-echo "  Hook:     ~/.claude/hooks/block-osc-sr.sh"
+echo "  Hooks:    ~/.claude/hooks/block-osc-sr.sh + block-secrets.sh"
 echo "  Registry: ~/.claude/obs-packages.json"
 echo "  Context:  ~/.claude/obs-packages/context/"
 echo ""
